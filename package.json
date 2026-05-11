@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node start.js",
     "icon": "node make-icon.js",
-    "build": "npm run icon && electron-builder --win portable",
-    "build:installer": "npm run icon && electron-builder --win nsis"
+    "build": "electron-builder --win portable",
+    "build:installer": "electron-builder --win nsis"
   },
   "devDependencies": {
     "electron": "^33.0.0",
