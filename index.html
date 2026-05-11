@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Pomodoro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ===== tokens ===== */
+  :root{
+    --bg:        #080808;
+    --fg:        #ffffff;
+    --fg-2:      #888888;
+    --fg-3:      #555555;
+    --card:      #111111;
+    --card-h:    #161616;
+    --line:      #1f1f1f;
+    --line-2:    #2a2a2a;
+    --inactive:  #333333;
+    --serif:     'Cormorant Garamond', 'Times New Roman', serif;
+    --sans:      'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html, body{ height:100%; overflow:hidden; }
+  body{
+    background:var(--bg);
+    font-family:var(--sans);
+    color:var(--fg);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    user-select:none;
+    -webkit-user-select:none;
+    cursor:default;
+  }
+  /* but keep the custom-minutes <input> typeable */
+  input{ user-select:text; -webkit-user-select:text; cursor:text; }
+
+  /* ===== window shell — now fills the entire Electron frame ===== */
+  .window{
+    position:relative;
+    width:100vw; height:100vh;
+    background:var(--bg);
+    overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+
+  /* ===== title bar ===== */
+  .titlebar{
+    height:46px;
+    flex:0 0 46px;
+    display:flex; align-items:center;
+    padding:0 14px 0 22px;
+    border-bottom:1px solid var(--line);
+    user-select:none;
+    -webkit-app-region:drag;
+    position:relative;
+  }
+  .titlebar .brand{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:15px;
+    letter-spacing:0.28em;
+    text-transform:uppercase;
+    color:var(--fg);
+  }
+  .titlebar nav{
+    display:flex; gap:4px;
+    margin-left:auto; margin-right:auto;
+    position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    -webkit-app-region:no-drag;
+  }
+  .titlebar nav a{
+    font-family:var(--sans);
+    font-size:11.5px;
+    font-weight:500;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--fg-2);
+    text-decoration:none;
+    padding:8px 14px;
+    border-radius:6px;
+    transition:color .15s ease, background .15s ease;
+    cursor:pointer;
+  }
+  .titlebar nav a:hover{ color:var(--fg); }
+  .titlebar nav a.active{ color:var(--fg); }
+  .titlebar nav a.active::after{
+    content:''; display:block; height:1px; background:var(--fg);
+    margin-top:5px; width:60%; margin-left:auto; margin-right:auto;
+  }
+  .titlebar .right{
+    margin-left:auto;
+    display:flex; align-items:center; gap:4px;
+    -webkit-app-region:no-drag;
+  }
+  .ic-btn{
+    width:30px; height:30px;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:transparent; border:none;
+    color:var(--fg-2);
+    border-radius:6px;
+    cursor:pointer;
+    transition:background .15s ease, color .15s ease;
+  }
+  .ic-btn:hover{ background:rgba(255,255,255,0.06); color:var(--fg); }
+  .ic-btn.close:hover{ background:#3a1414; color:#ffb4b4; }
+  .ic-btn svg{ width:14px; height:14px; }
+  .ic-btn.minus svg{ width:12px; height:12px; }
+
+  /* ===== main area ===== */
+  .main{
+    flex:1; min-height:0;
+    display:flex; flex-direction:column;
+    padding:clamp(20px, 4vw, 48px) clamp(24px, 5vw, 56px) clamp(20px, 3vh, 36px);
+    position:relative;
+  }
+
+  .view{ display:none; flex-direction:column; height:100%; min-height:0; }
+  .view.active{ display:flex; }
+
+  /* ===== timer view ===== */
+  .center-stack{
+    flex:1;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    text-align:center;
+    gap:clamp(10px, 1.6vh, 18px);
+    min-height:0;
+  }
+  .stage-label{
+    font-family:var(--sans);
+    font-size:10.5px;
+    font-weight:500;
+    letter-spacing:0.32em;
+    text-transform:uppercase;
+    color:var(--fg-2);
+  }
+  .digits{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:clamp(96px, 18vw, 200px);
+    line-height:0.92;
+    letter-spacing:-0.03em;
+    color:var(--fg);
+    font-variant-numeric:tabular-nums;
+    font-feature-settings:"tnum";
+  }
+  .dots{
+    display:flex; gap:14px; margin-top:6px;
+  }
+
+  /* ===== quick preset chips ===== */
+  .presets{
+    display:flex; gap:6px; flex-wrap:wrap; justify-content:center;
+    margin-top:14px;
+  }
+  .chip{
+    font-family:var(--sans);
+    font-size:10.5px; font-weight:500;
+    letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--fg-2);
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:7px 13px;
+    cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .chip:hover{ color:var(--fg); border-color:var(--line-2); }
+  .chip.active{
+    background:var(--fg); color:var(--bg); border-color:var(--fg);
+  }
+  .chip .u{
+    font-size:9px; opacity:0.6;
+  }
+  .chip-custom{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 10px 5px 13px;
+  }
+  .chip-custom input{
+    width:38px;
+    background:transparent; border:none; outline:none;
+    color:inherit;
+    font-family:var(--sans);
+    font-size:11.5px; font-weight:600;
+    letter-spacing:0.04em;
+    text-align:right;
+    -moz-appearance:textfield;
+    padding:2px 0;
+  }
+  .chip-custom input::-webkit-outer-spin-button,
+  .chip-custom input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .chip-custom .u{
+    font-size:9px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.6;
+  }
+  .dot{
+    width:8px; height:8px; border-radius:50%;
+    border:1px solid var(--inactive);
+    background:transparent;
+    transition:background .25s ease, border-color .25s ease, transform .25s ease;
+  }
+  .dot.done{
+    background:var(--fg); border-color:var(--fg);
+  }
+  .dot.current{
+    border-color:var(--fg);
+  }
+
+  /* ===== mode cards + start button row ===== */
+  .control-row{
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr minmax(140px, 180px);
+    gap:clamp(8px, 1.2vw, 14px);
+    margin-top:auto;
+    padding-top:clamp(14px, 2.5vh, 24px);
+  }
+  @media (max-width: 720px){
+    .control-row{ grid-template-columns: 1fr 1fr; }
+    .control-row .start-btn{ grid-column: 1 / -1; }
+  }
+  .mode-card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:14px 16px;
+    text-align:left;
+    cursor:pointer;
+    transition:background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
+    color:var(--fg);
+    display:flex; flex-direction:column; gap:4px;
+    min-height:78px;
+    justify-content:center;
+  }
+  .mode-card:hover{ background:var(--card-h); }
+  .mode-card .m-name{
+    font-family:var(--sans);
+    font-size:11px; font-weight:600;
+    letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--fg-2);
+    transition:color .18s ease;
+  }
+  .mode-card .m-time{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:30px;
+    line-height:1;
+    letter-spacing:-0.01em;
+  }
+  .mode-card .m-time .min{
+    font-family:var(--sans);
+    font-size:11px; font-weight:500;
+    letter-spacing:0.16em; text-transform:uppercase;
+    color:var(--fg-2);
+    margin-left:6px;
+    transition:color .18s ease;
+  }
+  .mode-card.active{
+    background:var(--fg);
+    color:var(--bg);
+    border-color:var(--fg);
+  }
+  .mode-card.active .m-name,
+  .mode-card.active .m-time .min{ color:rgba(8,8,8,0.55); }
+
+  .start-btn{
+    background:var(--fg);
+    color:var(--bg);
+    border:none;
+    border-radius:12px;
+    font-family:var(--sans);
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    cursor:pointer;
+    transition:transform .12s ease, background .15s ease, color .15s ease;
+    display:flex; align-items:center; justify-content:center;
+    gap:12px;
+    min-height:78px;
+  }
+  .start-btn:hover{ background:#f0f0f0; }
+  .start-btn:active{ transform:scale(0.985); }
+  .start-btn.running{
+    background:var(--card);
+    color:var(--fg);
+    border:1px solid var(--line);
+  }
+  .start-btn.running:hover{ background:var(--card-h); }
+  .start-btn .play-ico{
+    width:10px; height:12px;
+    display:inline-block;
+  }
+
+  .reset-link{
+    align-self:center;
+    margin-top:8px;
+    font-family:var(--sans);
+    font-size:10.5px;
+    font-weight:500;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    color:var(--fg-3);
+    background:transparent; border:none;
+    cursor:pointer;
+    padding:6px 12px;
+    transition:color .15s ease;
+  }
+  .reset-link:hover{ color:var(--fg-2); }
+
+  /* ===== report view ===== */
+  .report{
+    padding:24px 0 0;
+    display:flex; flex-direction:column;
+    height:100%;
+  }
+  .report-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom:clamp(20px, 4vh, 42px);
+    padding-bottom:clamp(14px, 2vh, 24px);
+    border-bottom:1px solid var(--line);
+  }
+  .report-head .h{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:clamp(32px, 5vw, 48px);
+    letter-spacing:-0.01em;
+    line-height:1;
+  }
+  .report-head .date{
+    font-family:var(--sans);
+    font-size:11px; font-weight:500;
+    letter-spacing:0.22em; text-transform:uppercase;
+    color:var(--fg-2);
+  }
+  .stats{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:0;
+  }
+  .stat{
+    padding:8px 24px;
+    border-right:1px solid var(--line);
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .stat:first-child{ padding-left:0; }
+  .stat:last-child{ border-right:none; padding-right:0; }
+  .stat .label{
+    font-family:var(--sans);
+    font-size:10.5px; font-weight:500;
+    letter-spacing:0.24em; text-transform:uppercase;
+    color:var(--fg-2);
+  }
+  .stat .val{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:clamp(44px, 7vw, 72px);
+    line-height:0.9;
+    letter-spacing:-0.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat .unit{
+    font-family:var(--sans);
+    font-size:11px; font-weight:500;
+    letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--fg-2);
+  }
+
+  .history{
+    margin-top:clamp(24px, 4vh, 48px);
+  }
+  .history h4{
+    font-family:var(--sans);
+    font-size:10.5px; font-weight:600;
+    letter-spacing:0.24em; text-transform:uppercase;
+    color:var(--fg-2);
+    margin-bottom:18px;
+  }
+  .weekgrid{
+    display:grid;
+    grid-template-columns:repeat(7, 1fr);
+    gap:8px;
+  }
+  .daycol{
+    display:flex; flex-direction:column;
+    align-items:center; gap:10px;
+    padding:14px 0;
+    border:1px solid var(--line);
+    border-radius:10px;
+  }
+  .daycol .d{
+    font-family:var(--sans);
+    font-size:10px; font-weight:500;
+    letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--fg-2);
+  }
+  .daycol .n{
+    font-family:var(--serif);
+    font-size:26px;
+    line-height:1;
+  }
+  .daycol.today{ background:var(--fg); color:var(--bg); border-color:var(--fg); }
+  .daycol.today .d{ color:rgba(8,8,8,0.5); }
+
+  /* ===== settings modal ===== */
+  .overlay{
+    position:absolute; inset:0;
+    background:rgba(0,0,0,0.55);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    display:none;
+    align-items:center; justify-content:center;
+    z-index:30;
+    animation:fade .18s ease;
+  }
+  .overlay.open{ display:flex; }
+  @keyframes fade{ from{opacity:0} to{opacity:1} }
+
+  .sheet{
+    width:480px;
+    background:#0c0c0c;
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:28px 30px 24px;
+    animation:rise .22s cubic-bezier(0.2,0.7,0.2,1);
+  }
+  @keyframes rise{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+
+  .sheet-head{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:22px;
+  }
+  .sheet-head h3{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:26px;
+    letter-spacing:-0.005em;
+  }
+  .sheet-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 0;
+    border-bottom:1px solid var(--line);
+    gap:16px;
+  }
+  .sheet-row:last-of-type{ border-bottom:none; }
+  .sheet-row .lbl{
+    font-family:var(--sans);
+    font-size:13px; font-weight:500;
+    color:var(--fg);
+  }
+  .sheet-row .sub{
+    font-family:var(--sans);
+    font-size:11.5px; font-weight:400;
+    color:var(--fg-2);
+    margin-top:2px;
+  }
+  .stepper{
+    display:inline-flex; align-items:center; gap:4px;
+    border:1px solid var(--line); border-radius:8px;
+    padding:2px;
+    background:var(--card);
+  }
+  .stepper button{
+    width:26px; height:26px;
+    border:none; background:transparent;
+    color:var(--fg-2); cursor:pointer;
+    border-radius:6px;
+    font-family:var(--sans); font-size:14px; font-weight:500;
+    transition:background .12s ease, color .12s ease;
+  }
+  .stepper button:hover{ background:rgba(255,255,255,0.06); color:var(--fg); }
+  .stepper .num{
+    font-family:var(--serif);
+    font-size:18px;
+    min-width:36px; text-align:center;
+    color:var(--fg);
+  }
+  .stepper .num .u{
+    font-family:var(--sans); font-size:10px;
+    color:var(--fg-2); margin-left:3px;
+    letter-spacing:0.12em; text-transform:uppercase;
+  }
+
+  /* toggle */
+  .tgl{
+    position:relative; width:38px; height:22px;
+    background:var(--inactive); border-radius:999px;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  .tgl::after{
+    content:''; position:absolute;
+    top:3px; left:3px;
+    width:16px; height:16px; border-radius:50%;
+    background:var(--fg);
+    transition:transform .18s ease;
+  }
+  .tgl.on{ background:var(--fg); }
+  .tgl.on::after{ background:var(--bg); transform:translateX(16px); }
+
+  .sheet-foot{
+    display:flex; justify-content:flex-end; gap:10px;
+    margin-top:22px;
+  }
+  .btn-ghost, .btn-solid{
+    font-family:var(--sans);
+    font-size:11.5px; font-weight:600;
+    letter-spacing:0.18em; text-transform:uppercase;
+    padding:11px 18px;
+    border-radius:8px;
+    cursor:pointer;
+    border:none;
+    transition:background .15s ease, color .15s ease;
+  }
+  .btn-ghost{ background:transparent; color:var(--fg-2); }
+  .btn-ghost:hover{ color:var(--fg); }
+  .btn-solid{ background:var(--fg); color:var(--bg); }
+  .btn-solid:hover{ background:#f0f0f0; }
+
+  /* settings gear in titlebar */
+  .ic-btn.gear svg{ width:15px; height:15px; }
+
+  /* status indicator dot top-left (subtle running pulse) */
+  .running-pulse{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--fg);
+    margin-right:10px;
+    opacity:0; transition:opacity .2s ease;
+  }
+  .running-pulse.on{ opacity:1; animation:pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+  /* keyboard hint — lives inside footer, no longer absolute */
+  .kbd-hint{
+    display:flex; justify-content:center;
+    padding:8px 0 0;
+    font-family:var(--sans);
+    font-size:9.5px; font-weight:500;
+    letter-spacing:0.22em; text-transform:uppercase;
+    color:var(--fg-3);
+    pointer-events:none;
+    flex-wrap:wrap; gap:4px;
+  }
+  .kbd-hint kbd{
+    font-family:var(--sans);
+    background:transparent;
+    border:1px solid var(--line-2);
+    border-radius:4px;
+    padding:1px 6px;
+    margin:0 4px;
+    color:var(--fg-2);
+    font-size:9px;
+    letter-spacing:0.12em;
+  }
+  @media (max-height: 600px){ .kbd-hint{ display:none; } }
+</style>
+</head>
+<body>
+  <div class="window" id="window">
+
+    <!-- ============ TITLE BAR ============ -->
+    <div class="titlebar">
+      <div style="display:flex; align-items:center;">
+        <span class="running-pulse" id="runPulse"></span>
+        <span class="brand">Pomodoro</span>
+      </div>
+
+      <nav>
+        <a data-view="timer" class="active">Timer</a>
+        <a data-view="report">Report</a>
+      </nav>
+
+      <div class="right">
+        <button class="ic-btn" id="muteBtn" title="Mute">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5 6 9H2v6h4l5 4z"/>
+            <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+            <path d="M19 5a9 9 0 0 1 0 14"/>
+          </svg>
+        </button>
+        <button class="ic-btn gear" id="settingsBtn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+          </svg>
+        </button>
+        <button class="ic-btn minus" id="minBtn" title="Minimize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M5 12h14"/>
+          </svg>
+        </button>
+        <button class="ic-btn" id="maxBtn" title="Maximize">
+          <svg id="maxIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="5" width="14" height="14" rx="1"/>
+          </svg>
+        </button>
+        <button class="ic-btn close" id="closeBtn" title="Close to tray">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main">
+
+      <!-- ===== TIMER VIEW ===== -->
+      <div class="view active" data-view="timer">
+        <div class="center-stack">
+          <div class="stage-label" id="stageLabel">Focus Session</div>
+          <div class="digits" id="digits">25:00</div>
+          <div class="dots" id="dots">
+            <span class="dot current"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <div class="presets" id="presets"></div>
+        </div>
+
+        <button class="reset-link" id="resetBtn">Reset</button>
+
+        <div class="control-row">
+          <button class="mode-card active" data-mode="focus">
+            <span class="m-name">Focus</span>
+            <span class="m-time"><span data-min="focus">25</span><span class="min">min</span></span>
+          </button>
+          <button class="mode-card" data-mode="short">
+            <span class="m-name">Short Break</span>
+            <span class="m-time"><span data-min="short">5</span><span class="min">min</span></span>
+          </button>
+          <button class="mode-card" data-mode="long">
+            <span class="m-name">Long Break</span>
+            <span class="m-time"><span data-min="long">30</span><span class="min">min</span></span>
+          </button>
+          <button class="start-btn" id="startBtn">
+            <svg class="play-ico" viewBox="0 0 10 12" fill="currentColor"><polygon points="0,0 10,6 0,12"/></svg>
+            <span id="startLabel">Start</span>
+          </button>
+        </div>
+
+        <div class="kbd-hint"><kbd>Space</kbd> Start / Pause &nbsp;·&nbsp; <kbd>R</kbd> Reset &nbsp;·&nbsp; <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Mode</div>
+      </div>
+
+      <!-- ===== REPORT VIEW ===== -->
+      <div class="view" data-view="report">
+        <div class="report">
+          <div class="report-head">
+            <div class="h">Today</div>
+            <div class="date" id="todayDate">Tuesday · May 12</div>
+          </div>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="label">Pomodoros</div>
+              <div class="val" id="statCount">0</div>
+              <div class="unit">Completed</div>
+            </div>
+            <div class="stat">
+              <div class="label">Focus Time</div>
+              <div class="val" id="statFocus">0:00</div>
+              <div class="unit">Hours · Minutes</div>
+            </div>
+            <div class="stat">
+              <div class="label">Streak</div>
+              <div class="val" id="statStreak">0</div>
+              <div class="unit">Days Running</div>
+            </div>
+          </div>
+
+          <div class="history">
+            <h4>This Week</h4>
+            <div class="weekgrid" id="weekgrid"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============ SETTINGS OVERLAY ============ -->
+    <div class="overlay" id="settingsOverlay">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>Settings</h3>
+          <button class="ic-btn" id="closeSettings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="sheet-row">
+          <div>
+            <div class="lbl">Focus</div>
+            <div class="sub">Length of a work session</div>
+          </div>
+          <div class="stepper" data-stepper="focus">
+            <button data-delta="-1">−</button>
+            <div class="num"><span class="v">25</span><span class="u">min</span></div>
+            <button data-delta="1">+</button>
+          </div>
+        </div>
+
+        <div class="sheet-row">
+          <div>
+            <div class="lbl">Short Break</div>
+            <div class="sub">Between focus sessions</div>
+          </div>
+          <div class="stepper" data-stepper="short">
+            <button data-delta="-1">−</button>
+            <div class="num"><span class="v">5</span><span class="u">min</span></div>
+            <button data-delta="1">+</button>
+          </div>
+        </div>
+
+        <div class="sheet-row">
+          <div>
+            <div class="lbl">Long Break</div>
+            <div class="sub">After completing a cycle</div>
+          </div>
+          <div class="stepper" data-stepper="long">
+            <button data-delta="-1">−</button>
+            <div class="num"><span class="v">30</span><span class="u">min</span></div>
+            <button data-delta="1">+</button>
+          </div>
+        </div>
+
+        <div class="sheet-row">
+          <div>
+            <div class="lbl">Long Break Interval</div>
+            <div class="sub">Pomodoros per cycle</div>
+          </div>
+          <div class="stepper" data-stepper="interval">
+            <button data-delta="-1">−</button>
+            <div class="num"><span class="v">4</span></div>
+            <button data-delta="1">+</button>
+          </div>
+        </div>
+
+        <div class="sheet-row">
+          <div>
+            <div class="lbl">Auto-start Breaks</div>
+            <div class="sub">Begin breaks automatically</div>
+          </div>
+          <div class="tgl on" data-toggle="autoBreaks"></div>
+        </div>
+
+        <div class="sheet-row">
+          <div>
+            <div class="lbl">Auto-start Pomodoros</div>
+            <div class="sub">Begin next focus automatically</div>
+          </div>
+          <div class="tgl" data-toggle="autoPomos"></div>
+        </div>
+
+        <div class="sheet-foot">
+          <button class="btn-ghost" id="resetDefaults">Reset Defaults</button>
+          <button class="btn-solid" id="saveSettings">Done</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+(function(){
+  // ===== persistence =====
+  const STORE_KEY = 'pom_data';
+  function loadStore() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
+  }
+  function saveStore(data) {
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  }
+
+  const store = loadStore();
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  // ===== state =====
+  const settings = Object.assign({
+    focus: 25, short: 5, long: 30, interval: 4,
+    autoBreaks: true, autoPomos: false,
+  }, store.settings || {});
+
+  const PRESETS = {
+    focus: [15, 25, 45, 60, 90],
+    short: [3, 5, 10, 15],
+    long:  [15, 20, 30, 45],
+  };
+  let customValue = 50;
+  let mode = 'focus';
+  let remaining = settings.focus * 60;
+  let running = false;
+  let tick = null;
+  let completedThisCycle = 0;
+  let muted = false;
+
+  // Per-day count stored in localStorage
+  const dayCounts = store.dayCounts || {};
+  if (!dayCounts[todayKey]) dayCounts[todayKey] = 0;
+
+  function persist() {
+    saveStore({ settings, dayCounts });
+  }
+
+  // ===== DOM =====
+  const digits     = document.getElementById('digits');
+  const dots       = document.getElementById('dots');
+  const stageLabel = document.getElementById('stageLabel');
+  const startBtn   = document.getElementById('startBtn');
+  const startLabel = document.getElementById('startLabel');
+  const resetBtn   = document.getElementById('resetBtn');
+  const runPulse   = document.getElementById('runPulse');
+  const muteBtn    = document.getElementById('muteBtn');
+
+  function fmt(s){
+    const m = Math.floor(s/60), r = s%60;
+    return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+  }
+
+  function updateDigits(){
+    digits.textContent = fmt(remaining);
+    document.title = (running ? fmt(remaining) + ' · ' : '') + 'Pomodoro';
+  }
+
+  function modeLabel(m){
+    return m === 'focus' ? 'Focus Session'
+         : m === 'short' ? 'Short Break'
+         : 'Long Break';
+  }
+
+  function renderDots(){
+    const n = settings.interval;
+    dots.innerHTML = '';
+    for (let i=0; i<n; i++){
+      const d = document.createElement('span');
+      d.className = 'dot';
+      if (i < completedThisCycle) d.classList.add('done');
+      else if (i === completedThisCycle && mode === 'focus') d.classList.add('current');
+      dots.appendChild(d);
+    }
+  }
+
+  function setMode(m, opts={}){
+    mode = m;
+    remaining = settings[m] * 60;
+    stageLabel.textContent = modeLabel(m);
+    document.querySelectorAll('.mode-card').forEach(c=>{
+      c.classList.toggle('active', c.dataset.mode === m);
+    });
+    renderDots();
+    renderPresets();
+    updateDigits();
+    if (opts.stop) stopTimer();
+  }
+
+  function renderPresets(){
+    const host = document.getElementById('presets');
+    const list = PRESETS[mode] || [];
+    const current = settings[mode];
+    host.innerHTML = '';
+    list.forEach(v=>{
+      const b = document.createElement('button');
+      b.className = 'chip' + (v === current ? ' active' : '');
+      b.innerHTML = `${v}<span class="u">m</span>`;
+      b.addEventListener('click', ()=>{
+        settings[mode] = v;
+        setMode(mode, {stop:true});
+        syncCardMinutes();
+        syncSheet();
+        persist();
+      });
+      host.appendChild(b);
+    });
+    const isCustom = !list.includes(current);
+    const c = document.createElement('div');
+    c.className = 'chip chip-custom' + (isCustom ? ' active' : '');
+    c.innerHTML = `<input type="number" min="1" max="180" value="${isCustom ? current : customValue}" /><span class="u">min</span>`;
+    const input = c.querySelector('input');
+    input.addEventListener('focus', ()=>{ c.classList.add('active'); input.select(); });
+    input.addEventListener('input', ()=>{
+      let v = parseInt(input.value, 10);
+      if (isNaN(v)) return;
+      v = Math.max(1, Math.min(180, v));
+      customValue = v;
+      settings[mode] = v;
+      digits.textContent = fmt(v*60);
+      host.querySelectorAll('.chip').forEach(ch=> ch.classList.toggle('active', ch===c));
+    });
+    input.addEventListener('blur', ()=>{
+      let v = parseInt(input.value, 10);
+      if (isNaN(v) || v < 1) v = 1;
+      if (v > 180) v = 180;
+      input.value = v; customValue = v; settings[mode] = v;
+      setMode(mode, {stop:true});
+      syncCardMinutes(); syncSheet(); persist();
+    });
+    input.addEventListener('keydown', (e)=>{ if (e.key==='Enter'){ e.preventDefault(); input.blur(); } });
+    host.appendChild(c);
+  }
+
+  function startTimer(){
+    if (running) return;
+    running = true;
+    startLabel.textContent = 'Pause';
+    startBtn.classList.add('running');
+    startBtn.querySelector('.play-ico').style.display='none';
+    runPulse.classList.add('on');
+    tick = setInterval(()=>{
+      remaining--;
+      if (remaining <= 0){
+        clearInterval(tick); tick = null;
+        running = false;
+        onSessionEnd();
+      }
+      updateDigits();
+    }, 1000);
+  }
+  function pauseTimer(){
+    if (!running) return;
+    running = false;
+    clearInterval(tick); tick = null;
+    startLabel.textContent = 'Resume';
+    startBtn.classList.remove('running');
+    startBtn.querySelector('.play-ico').style.display='inline-block';
+    runPulse.classList.remove('on');
+  }
+  function stopTimer(){
+    running = false;
+    if (tick){ clearInterval(tick); tick = null; }
+    startLabel.textContent = 'Start';
+    startBtn.classList.remove('running');
+    startBtn.querySelector('.play-ico').style.display='inline-block';
+    runPulse.classList.remove('on');
+  }
+
+  function notify(title, body) {
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body, silent: true });
+    }
+  }
+
+  function onSessionEnd(){
+    chime();
+    if (mode === 'focus'){
+      dayCounts[todayKey] = (dayCounts[todayKey] || 0) + 1;
+      completedThisCycle++;
+      persist();
+      updateReport();
+      if (completedThisCycle >= settings.interval){
+        completedThisCycle = 0;
+        notify('Pomodoro', 'Cycle complete! Time for a long break.');
+        setMode('long', {stop:true});
+      } else {
+        notify('Pomodoro', 'Focus session done! Take a short break.');
+        setMode('short', {stop:true});
+      }
+      if (settings.autoBreaks) startTimer(); else stopTimer();
+    } else {
+      notify('Pomodoro', 'Break over — back to focus!');
+      setMode('focus', {stop:true});
+      if (settings.autoPomos) startTimer(); else stopTimer();
+    }
+    document.getElementById('statCount').textContent = dayCounts[todayKey];
+  }
+
+  function chime(){
+    if (muted) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.value = 0.0001;
+      o.connect(g).connect(ctx.destination);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
+      setTimeout(()=>{ o.stop(); ctx.close(); }, 1300);
+    } catch(e){}
+  }
+
+  // ===== report =====
+  function updateReport(){
+    const count = dayCounts[todayKey] || 0;
+    document.getElementById('statCount').textContent = count;
+    const totalMins = count * settings.focus;
+    document.getElementById('statFocus').textContent =
+      Math.floor(totalMins/60) + ':' + String(totalMins%60).padStart(2,'0');
+
+    // streak: count consecutive days with at least 1 pomo
+    const keys = Object.keys(dayCounts).sort();
+    let streak = 0;
+    const today = new Date(todayKey);
+    for (let i = 0; ; i++) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      const k = d.toISOString().slice(0,10);
+      if (dayCounts[k] > 0) streak++; else break;
+    }
+    document.getElementById('statStreak').textContent = streak;
+
+    // week grid
+    const grid = document.getElementById('weekgrid');
+    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    grid.innerHTML = '';
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      const k = d.toISOString().slice(0,10);
+      const isToday = k === todayKey;
+      const col = document.createElement('div');
+      col.className = 'daycol' + (isToday ? ' today' : '');
+      col.innerHTML = `<span class="d">${DAY_NAMES[d.getDay()]}</span><span class="n">${dayCounts[k] || '—'}</span>`;
+      grid.appendChild(col);
+    }
+  }
+
+  // ===== event handlers =====
+  startBtn.addEventListener('click', ()=>{ running ? pauseTimer() : startTimer(); });
+  resetBtn.addEventListener('click', ()=>{ setMode(mode, {stop:true}); });
+
+  document.querySelectorAll('.mode-card').forEach(c=>{
+    c.addEventListener('click', ()=> setMode(c.dataset.mode, {stop:true}));
+  });
+
+  document.querySelectorAll('.titlebar nav a').forEach(a=>{
+    a.addEventListener('click', ()=>{
+      const v = a.dataset.view;
+      document.querySelectorAll('.titlebar nav a').forEach(x=>x.classList.toggle('active', x===a));
+      document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active', x.dataset.view===v));
+      if (v === 'report') updateReport();
+    });
+  });
+
+  muteBtn.addEventListener('click', ()=>{
+    muted = !muted;
+    muteBtn.style.color = muted ? 'var(--fg-3)' : '';
+    muteBtn.innerHTML = muted
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+           <path d="M11 5 6 9H2v6h4l5 4z"/>
+           <path d="M22 9l-6 6M16 9l6 6"/>
+         </svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+           <path d="M11 5 6 9H2v6h4l5 4z"/>
+           <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+           <path d="M19 5a9 9 0 0 1 0 14"/>
+         </svg>`;
+  });
+
+  const overlay = document.getElementById('settingsOverlay');
+  document.getElementById('settingsBtn').addEventListener('click', ()=> overlay.classList.add('open'));
+  document.getElementById('closeSettings').addEventListener('click', ()=> overlay.classList.remove('open'));
+  document.getElementById('saveSettings').addEventListener('click', ()=>{
+    overlay.classList.remove('open');
+    setMode(mode, {stop:true});
+    syncCardMinutes(); persist();
+  });
+  document.getElementById('resetDefaults').addEventListener('click', ()=>{
+    Object.assign(settings, {focus:25, short:5, long:30, interval:4, autoBreaks:true, autoPomos:false});
+    syncSheet(); setMode(mode, {stop:true}); syncCardMinutes(); persist();
+  });
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+
+  function syncCardMinutes(){
+    document.querySelectorAll('[data-min]').forEach(el=>{
+      el.textContent = settings[el.dataset.min];
+    });
+  }
+  function syncSheet(){
+    document.querySelectorAll('[data-stepper]').forEach(s=>{
+      s.querySelector('.v').textContent = settings[s.dataset.stepper];
+    });
+    document.querySelectorAll('[data-toggle]').forEach(t=>{
+      t.classList.toggle('on', !!settings[t.dataset.toggle]);
+    });
+  }
+
+  document.querySelectorAll('.stepper').forEach(s=>{
+    const k = s.dataset.stepper;
+    s.querySelectorAll('button').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const d = parseInt(b.dataset.delta, 10);
+        let v = settings[k] + d;
+        if (k === 'interval') v = Math.max(2, Math.min(8, v));
+        else v = Math.max(1, Math.min(120, v));
+        settings[k] = v;
+        s.querySelector('.v').textContent = v;
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-toggle]').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      const k = t.dataset.toggle;
+      settings[k] = !settings[k];
+      t.classList.toggle('on', settings[k]);
+    });
+  });
+
+  window.addEventListener('keydown', (e)=>{
+    if (overlay.classList.contains('open')) return;
+    if (e.code === 'Space'){ e.preventDefault(); running ? pauseTimer() : startTimer(); }
+    else if (e.key.toLowerCase() === 'r'){ setMode(mode, {stop:true}); }
+    else if (e.key === '1'){ setMode('focus', {stop:true}); }
+    else if (e.key === '2'){ setMode('short', {stop:true}); }
+    else if (e.key === '3'){ setMode('long', {stop:true}); }
+    else if (e.key === 'F11'){ e.preventDefault(); window.electronAPI?.toggleMaximize(); }
+  });
+
+  // Wire close/minimize/maximize to native Electron window controls
+  document.getElementById('closeBtn').addEventListener('click', ()=>{
+    window.electronAPI?.close();
+  });
+  document.getElementById('minBtn').addEventListener('click', ()=>{
+    window.electronAPI?.minimize();
+  });
+  const maxBtn = document.getElementById('maxBtn');
+  const maxIcon = document.getElementById('maxIcon');
+  maxBtn.addEventListener('click', ()=>{
+    window.electronAPI?.toggleMaximize();
+  });
+  window.electronAPI?.onMaximizeChange((isMax)=>{
+    maxBtn.title = isMax ? 'Restore' : 'Maximize';
+    // swap to a "restore" (two overlapping squares) icon when maximized
+    maxIcon.innerHTML = isMax
+      ? '<rect x="7" y="3" width="14" height="14" rx="1"/><rect x="3" y="7" width="14" height="14" rx="1" fill="var(--bg)"/>'
+      : '<rect x="5" y="5" width="14" height="14" rx="1"/>';
+  });
+
+  // block right-click context menu and drag-to-copy
+  window.addEventListener('contextmenu', (e) => {
+    // allow it only inside the custom-minutes input
+    if (e.target.tagName !== 'INPUT') e.preventDefault();
+  });
+  window.addEventListener('dragstart', (e) => e.preventDefault());
+
+  // ===== init =====
+  Notification.requestPermission();
+  setMode('focus');
+  updateDigits();
+  updateReport();
+
+  const d = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('todayDate').textContent =
+    `${days[d.getDay()]} · ${months[d.getMonth()]} ${d.getDate()}`;
+
+  syncSheet();
+  syncCardMinutes();
+})();
+</script>
+</body>
+</html>

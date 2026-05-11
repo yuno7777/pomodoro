@@ -1,0 +1,40 @@
+{
+  "name": "pomodoro",
+  "version": "1.0.0",
+  "description": "A minimal Pomodoro timer desktop app",
+  "main": "main.js",
+  "scripts": {
+    "start": "node start.js",
+    "icon": "node make-icon.js",
+    "build": "npm run icon && electron-builder --win portable",
+    "build:installer": "npm run icon && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.abhi.pomodoro",
+    "productName": "Pomodoro",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "splash.html",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "portable": {
+      "artifactName": "Pomodoro.exe"
+    }
+  }
+}
